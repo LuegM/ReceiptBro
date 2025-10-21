@@ -80,7 +80,7 @@ struct ReceiptRowView: View {
             Spacer()
 
             // Amount
-            Text(receipt.totalAmount, format: .currency(code: "USD"))
+            Text(receipt.totalAmount, format: .currency(code: receipt.currency))
                 .font(.headline)
                 .foregroundStyle(.primary)
         }

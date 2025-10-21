@@ -10,10 +10,12 @@ struct ReviewView: View {
     let image: UIImage
     let extractor: ReceiptExtractor
 
-    @State private var isEditing = false
     @State private var isSaving = false
     @State private var showingSaveError = false
     @State private var saveError: Error?
+    @State private var editableData: EditableReceiptData?
+    @State private var validationWarnings: [String] = []
+    @State private var showEditableView = false
 
     var body: some View {
         NavigationStack {
@@ -29,17 +31,26 @@ struct ReviewView: View {
                         errorView(error)
                     }
 
-                    // Streaming receipt display
+                    // Receipt display
                     if let receiptData = extractor.receiptData {
-                        VirtualReceiptView(data: receiptData)
-                            .padding(.horizontal)
+                        VStack(spacing: 16) {
+                            // Show validation warnings if any
+                            if !validationWarnings.isEmpty {
+                                ValidationWarningsView(warnings: validationWarnings)
+                                    .padding(.horizontal)
+                            }
+
+                            // Show tap-to-edit view if editing is available
+                            if showEditableView, let editableData = editableData {
+                                TapToEditReceiptView(receiptData: editableData)
+                                    .padding(.horizontal)
+                            } else {
+                                VirtualReceiptView(data: receiptData)
+                                    .padding(.horizontal)
+                            }
+                        }
                     }
 
-                    // Thumbnail of original image
-//                    if !extractor.isProcessing {
-//                        originalImageThumbnail
-//                    }
-                    
                     // OCR text section
                     if !extractor.isProcessing, let ocrText = extractor.ocrText {
                         ocrTextSection(ocrText)
@@ -57,6 +68,20 @@ struct ReviewView: View {
                 }
 
                 ToolbarItem(placement: .primaryAction) {
+                    if !extractor.isProcessing && extractor.receiptData != nil {
+                        if showEditableView {
+                            Button("Done Editing") {
+                                showEditableView = false
+                            }
+                        } else {
+                            Button("Edit") {
+                                enterEditMode()
+                            }
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
                             await saveReceipt()
@@ -71,6 +96,12 @@ struct ReviewView: View {
             } message: {
                 if let error = saveError {
                     Text(error.localizedDescription)
+                }
+            }
+            .onChange(of: extractor.isProcessing) { wasProcessing, isProcessing in
+                // When processing completes, validate the data
+                if wasProcessing && !isProcessing && extractor.receiptData != nil {
+                    validateExtractedData()
                 }
             }
         }
@@ -169,8 +200,36 @@ struct ReviewView: View {
 
     // MARK: - Actions
 
+    private func enterEditMode() {
+        // Create editable data from current receipt if not already created
+        if editableData == nil, let receiptData = extractor.receiptData {
+            Logger.ui.info("Creating editable receipt data")
+            if let editable = EditableReceiptData(from: receiptData) {
+                editableData = editable
+                Logger.ui.info("Editable data created successfully")
+            } else {
+                Logger.ui.error("Failed to create EditableReceiptData from partial data")
+                Logger.ui.error("Merchant: \(String(describing: receiptData.merchantName))")
+                Logger.ui.error("Date: \(String(describing: receiptData.date))")
+                Logger.ui.error("Currency: \(String(describing: receiptData.currency))")
+                Logger.ui.error("Total: \(String(describing: receiptData.totalAmount))")
+                return
+            }
+        }
+        showEditableView = true
+    }
+
     private func saveReceipt() async {
-        guard let finalizedData = extractor.finalizeReceipt() else {
+        // If editing, convert back to ReceiptData first
+        var finalizedData: ReceiptData?
+
+        if let editableData = editableData, showEditableView {
+            finalizedData = editableData.toReceiptData()
+        } else {
+            finalizedData = extractor.finalizeReceipt()
+        }
+
+        guard let finalizedData = finalizedData else {
             saveError = NSError(
                 domain: "ReviewView",
                 code: -1,
@@ -206,6 +265,68 @@ struct ReviewView: View {
             saveError = error
             showingSaveError = true
         }
+    }
+
+    private func validateExtractedData() {
+        if let receiptData = extractor.receiptData {
+            let result = ReceiptValidator.validate(receiptData)
+            validationWarnings = result.warnings
+
+            // Auto-remove duplicates if found
+            if !result.warnings.filter({ $0.contains("duplicate") }).isEmpty {
+                if var items = receiptData.items {
+                    items = ReceiptValidator.removeDuplicateItems(from: items)
+                    // Note: Can't directly modify receiptData.items as it's immutable
+                    // The user will need to manually delete duplicates in edit mode
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Validation Warnings View
+
+struct ValidationWarningsView: View {
+    let warnings: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+
+                Text("Validation Warnings")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+
+            ForEach(warnings, id: \.self) { warning in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("•")
+                        .foregroundStyle(.secondary)
+                    Text(warning)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Tap **Edit** to correct these issues")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+        }
+        .padding()
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - View Extension for Validation
+
+extension ReviewView {
+    /// Call validation after extraction completes
+    func performValidation() {
+        validateExtractedData()
     }
 }
 

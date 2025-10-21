@@ -32,13 +32,16 @@ struct EmptyStateView: View {
             } label: {
                 Label("Scan Receipt", systemImage: "camera.fill")
                     .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue.gradient)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .fontDesign(.rounded)
+//                    .foregroundStyle(.white)
+//                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+//                    .background(Color.blue.gradient)
+//                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .padding(.horizontal, 48)
+            .buttonSizing(.flexible)
+            .buttonStyle(.glassProminent)
+            .padding(.horizontal, 40)
             .padding(.top, 8)
 
             Spacer()

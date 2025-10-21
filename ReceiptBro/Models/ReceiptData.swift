@@ -11,7 +11,7 @@ struct ReceiptData {
     @Guide(description: "Street address of the merchant location, if shown on receipt")
     let address: String?
 
-    @Guide(description: "Purchase date in YYYY-MM-DD format. Extract from receipt date/time stamp.")
+    @Guide(description: "Purchase date in YYYY-MM-DD format only (e.g., '2024-03-15'). Convert formats like '19.08.2025' or '08/19/2025' to '2025-08-19'. Extract from 'Datum:' or 'Date:' field.")
     let date: String
 
     @Guide(description: "Transaction ID, receipt number, trace number, or order number from the receipt. Look for fields like 'Trace-Nr', 'Transaction', 'Receipt #', 'Bon-Nr', or similar identifiers. Prefer numeric transaction/trace IDs over receipt numbers.")
@@ -26,7 +26,7 @@ struct ReceiptData {
     @Guide(description: "Individual line items purchased. Extract product name, quantity, unit price, and total price for each item. Each line item should appear only once - do not create duplicates. The sum of all item totalPrices should approximately equal the receipt subtotal (before tax).")
     let items: [LineItemData]
 
-    @Guide(description: "Tax amount if itemized separately on the receipt. May appear as single 'Tax' line or as percentage breakdown (e.g., '10% MwSt' or 'VAT'). Sum all tax amounts if multiple rates shown. Omit if no tax information is present.")
+    @Guide(description: "Tax amount if itemized separately. IMPORTANT: If multiple tax rates shown (e.g., '10% MwSt von 3.16 = 0.32' AND '20% MwSt von 2.49 = 0.50'), you MUST SUM them (0.32 + 0.50 = 0.82). Look for 'Tax', 'MwSt', 'VAT', 'GST'. Extract the calculated tax amount, not the base amount. Omit if no tax shown.")
     let taxAmount: Double?
 
     @Guide(description: "Total amount paid including all taxes and fees. This is the final transaction amount from the receipt.")
@@ -50,12 +50,13 @@ struct LineItemData {
     let totalPrice: Double
 }
 
-// MARK: - Example for One-Shot Prompting
+// MARK: - Examples for Few-Shot Prompting
 
 extension ReceiptData {
-    /// Example receipt for one-shot prompting to improve extraction accuracy
+    /// Example receipts for few-shot prompting to improve extraction accuracy
     /// Property order matches the ReceiptData definition for optimal generation
-    /// NOTE: This is a format example only - actual extraction must use values from the provided OCR text
+    /// NOTE: These are format examples only - actual extraction must use values from the provided OCR text
+
     static let exampleGroceryReceipt = ReceiptData(
         merchantName: "SuperMarkt Plus",
         address: "Hauptstrasse 45, 1010 Wien",
@@ -72,4 +73,37 @@ extension ReceiptData {
         taxAmount: 0.82,
         totalAmount: 13.15
     )
+
+    static let exampleUSReceipt = ReceiptData(
+        merchantName: "Target",
+        address: "500 Broadway, New York, NY 10012",
+        date: "2024-06-22",
+        transactionId: "T-9847362",
+        paymentMethod: "Credit Card",
+        currency: "USD",
+        items: [
+            LineItemData(name: "Paper Towels 6pk", quantity: 1.0, unitPrice: 12.99, totalPrice: 12.99),
+            LineItemData(name: "Dish Soap", quantity: 2.0, unitPrice: 3.49, totalPrice: 6.98),
+            LineItemData(name: "Laundry Detergent", quantity: 1.0, unitPrice: 18.99, totalPrice: 18.99)
+        ],
+        taxAmount: 3.16,
+        totalAmount: 42.12
+    )
+
+    static let exampleRestaurantReceipt = ReceiptData(
+        merchantName: "Café Central",
+        address: "Herrengasse 14, 1010 Wien",
+        date: "2024-09-10",
+        transactionId: "4729183",
+        paymentMethod: "Cash",
+        currency: "EUR",
+        items: [
+            LineItemData(name: "Cappuccino", quantity: 2.0, unitPrice: 4.50, totalPrice: 9.00),
+            LineItemData(name: "Apfelstrudel", quantity: 1.0, unitPrice: 6.80, totalPrice: 6.80),
+            LineItemData(name: "Mineral Water", quantity: 1.0, unitPrice: 3.20, totalPrice: 3.20)
+        ],
+        taxAmount: 1.90,
+        totalAmount: 20.90
+    )
 }
+

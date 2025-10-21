@@ -126,16 +126,32 @@ final class ReceiptExtractor {
                 return
             }
 
-            // Use PromptBuilder for structured, one-shot prompting
-            // Separates the extraction task, OCR data, and example cleanly
+            // Use PromptBuilder for few-shot prompting with multiple examples
+            // Separates the extraction task, OCR data, and examples cleanly
             let prompt = Prompt {
-                "Extract structured receipt data from the OCR text below. Use ONLY the information from this receipt - do not use values from the example."
+                "Extract structured receipt data from the OCR text below."
                 ""
-                "OCR Text:"
+                "CRITICAL RULES:"
+                "1. Use ONLY values from the provided OCR text - never copy from examples"
+                "2. Each line item must appear exactly once - NO DUPLICATES"
+                "3. Verify that item prices sum correctly (quantity × unitPrice = totalPrice)"
+                "4. For transaction ID, prefer 'Trace-Nr', 'Trace Number', or similar transaction identifiers"
+                "5. For tax amount, SUM all tax lines if multiple rates shown (e.g., 10% + 20%)"
+                "6. Date must be in YYYY-MM-DD format"
+                ""
+                "OCR Text to Extract:"
                 ocrText
                 ""
-                "IMPORTANT: The example below shows the output format only. Extract actual values from the OCR text above, not from this example:"
+                "Format Examples (DO NOT copy these values - use actual data from OCR above):"
+                ""
+                "Example 1 - European Grocery:"
                 ReceiptData.exampleGroceryReceipt
+                ""
+                "Example 2 - US Retail:"
+                ReceiptData.exampleUSReceipt
+                ""
+                "Example 3 - Restaurant:"
+                ReceiptData.exampleRestaurantReceipt
             }
 
             // Stream response for progressive UI updates
@@ -162,6 +178,16 @@ final class ReceiptExtractor {
             // Log the partial object created by the Foundation Model
             if let createdObject = self.receiptData {
                 Logger.foundationModel.debug("Foundation Model streaming complete - Created partial object: \(String(describing: createdObject))")
+            }
+
+            // Auto-clean duplicates after streaming completes
+            if var receiptData = self.receiptData, let items = receiptData.items {
+                let cleanedItems = ReceiptValidator.removeDuplicateItems(from: items)
+                if cleanedItems.count != items.count {
+                    Logger.extraction.info("Auto-removed \(items.count - cleanedItems.count) duplicate items")
+                    receiptData.items = cleanedItems
+                    self.receiptData = receiptData
+                }
             }
 
         } catch {

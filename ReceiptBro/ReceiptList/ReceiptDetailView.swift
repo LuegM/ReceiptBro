@@ -68,7 +68,7 @@ struct ReceiptDetailView: View {
                                 Text("Tax")
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                Text(taxAmount, format: .currency(code: "USD"))
+                                Text(taxAmount, format: .currency(code: receipt.currency))
                             }
                         }
 
@@ -76,7 +76,7 @@ struct ReceiptDetailView: View {
                             Text("Total")
                                 .fontWeight(.semibold)
                             Spacer()
-                            Text(receipt.totalAmount, format: .currency(code: "USD"))
+                            Text(receipt.totalAmount, format: .currency(code: receipt.currency))
                                 .font(.title3)
                                 .fontWeight(.semibold)
                         }
@@ -158,6 +158,11 @@ struct ReceiptDetailView: View {
 struct LineItemDetailRow: View {
     let item: LineItem
 
+    // Get currency from the receipt relationship
+    var currency: String {
+        item.receipt?.currency ?? "USD"
+    }
+
     var body: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
@@ -165,7 +170,7 @@ struct LineItemDetailRow: View {
                     .font(.body)
 
                 if item.quantity != 1.0 {
-                    Text("Qty: \(item.quantity, specifier: "%.2f") × \(item.unitPrice, format: .currency(code: "USD"))")
+                    Text("Qty: \(item.quantity, specifier: "%.2f") × \(item.unitPrice, format: .currency(code: currency))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -173,7 +178,7 @@ struct LineItemDetailRow: View {
 
             Spacer()
 
-            Text(item.totalPrice, format: .currency(code: "USD"))
+            Text(item.totalPrice, format: .currency(code: currency))
                 .font(.body)
         }
         .padding()
