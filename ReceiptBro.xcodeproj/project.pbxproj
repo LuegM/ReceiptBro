@@ -256,6 +256,9 @@
 				DEVELOPMENT_TEAM = 5V8VQ5UKAD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "ReceiptBro needs camera access to scan and digitize your receipts.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "ReceiptBro needs photo library access to import receipt images.";
+				INFOPLIST_KEY_NSPrincipalClass = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -288,6 +291,9 @@
 				DEVELOPMENT_TEAM = 5V8VQ5UKAD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "ReceiptBro needs camera access to scan and digitize your receipts.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "ReceiptBro needs photo library access to import receipt images.";
+				INFOPLIST_KEY_NSPrincipalClass = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
