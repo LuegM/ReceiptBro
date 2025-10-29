@@ -145,7 +145,9 @@ struct ReceiptFieldEditorView: View {
             paymentMethod: "VISA",
             currency: "EUR",
             items: [],
+            discountAmount: 0,
             taxAmount: 0.82,
+            taxType: "included",
             totalAmount: 6.47
         ),
         field: .merchantName

@@ -7,7 +7,9 @@ final class Receipt {
     var merchantName: String
     var date: Date
     var totalAmount: Double
+    var discountAmount: Double?
     var taxAmount: Double?
+    var taxType: String? // "included" or "added"
     var paymentMethod: String?
     var transactionId: String?
     var address: String?
@@ -25,7 +27,9 @@ final class Receipt {
         merchantName: String,
         date: Date,
         totalAmount: Double,
+        discountAmount: Double? = nil,
         taxAmount: Double? = nil,
+        taxType: String? = nil,
         paymentMethod: String? = nil,
         transactionId: String? = nil,
         address: String? = nil,
@@ -39,7 +43,9 @@ final class Receipt {
         self.merchantName = merchantName
         self.date = date
         self.totalAmount = totalAmount
+        self.discountAmount = discountAmount
         self.taxAmount = taxAmount
+        self.taxType = taxType
         self.paymentMethod = paymentMethod
         self.transactionId = transactionId
         self.address = address
@@ -64,7 +70,9 @@ final class Receipt {
             merchantName: receiptData.merchantName,
             date: parsedDate,
             totalAmount: receiptData.totalAmount,
+            discountAmount: receiptData.discountAmount,
             taxAmount: receiptData.taxAmount,
+            taxType: receiptData.taxType,
             paymentMethod: receiptData.paymentMethod,
             transactionId: receiptData.transactionId,
             address: receiptData.address,

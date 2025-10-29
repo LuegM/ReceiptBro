@@ -12,15 +12,23 @@ final class EditableReceiptData {
     var paymentMethod: String
     var currency: String
     var items: [EditableLineItem]
+    var discountAmount: Decimal
     var taxAmount: Decimal
+    var taxType: String // "included" or "added"
     var totalAmount: Decimal
 
-    /// Computed subtotal from line items
+    /// Computed subtotal from line items (includes negative discount items)
     var calculatedSubtotal: Decimal {
         items.reduce(Decimal.zero) { $0 + $1.totalPrice }
     }
 
-    /// Computed total (subtotal + tax)
+    /// Computed discount from negative line items
+    var calculatedDiscount: Decimal {
+        let negativeSum = items.filter { $0.totalPrice < 0 }.reduce(Decimal.zero) { $0 + $1.totalPrice }
+        return abs(negativeSum)
+    }
+
+    /// Computed total (subtotal + tax, where subtotal already includes discounts)
     var calculatedTotal: Decimal {
         calculatedSubtotal + taxAmount
     }
@@ -30,7 +38,7 @@ final class EditableReceiptData {
         abs(calculatedTotal - totalAmount) < 0.05
     }
 
-    init(merchantName: String, address: String, date: Date, transactionId: String, paymentMethod: String, currency: String, items: [EditableLineItem], taxAmount: Decimal, totalAmount: Decimal) {
+    init(merchantName: String, address: String, date: Date, transactionId: String, paymentMethod: String, currency: String, items: [EditableLineItem], discountAmount: Decimal, taxAmount: Decimal, taxType: String, totalAmount: Decimal) {
         self.merchantName = merchantName
         self.address = address
         self.date = date
@@ -38,7 +46,9 @@ final class EditableReceiptData {
         self.paymentMethod = paymentMethod
         self.currency = currency
         self.items = items
+        self.discountAmount = discountAmount
         self.taxAmount = taxAmount
+        self.taxType = taxType
         self.totalAmount = totalAmount
     }
 
@@ -89,7 +99,9 @@ final class EditableReceiptData {
             paymentMethod: partial.paymentMethod ?? "",
             currency: currency,
             items: editableItems,
+            discountAmount: Decimal(partial.discountAmount ?? 0.0),
             taxAmount: Decimal(partial.taxAmount ?? 0.0),
+            taxType: partial.taxType ?? "included",
             totalAmount: Decimal(totalAmount)
         )
     }
@@ -107,7 +119,9 @@ final class EditableReceiptData {
             paymentMethod: paymentMethod.isEmpty ? nil : paymentMethod,
             currency: currency,
             items: items.map { $0.toLineItemData() },
+            discountAmount: discountAmount.isZero ? nil : NSDecimalNumber(decimal: discountAmount).doubleValue,
             taxAmount: taxAmount.isZero ? nil : NSDecimalNumber(decimal: taxAmount).doubleValue,
+            taxType: taxType,
             totalAmount: NSDecimalNumber(decimal: totalAmount).doubleValue
         )
     }

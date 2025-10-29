@@ -193,3 +193,24 @@ ReceiptBro/
 - Minimum: iOS 17.0 (for SwiftData)
 - Foundation Models: iOS 18.2+ (gracefully degrades if unavailable)
 - Vision OCR: Works on all recent iOS versions
+
+## Development Guidelines for AI Assistants
+
+When working with this codebase, follow these guidelines:
+
+### Research Requirements
+- **Always consult Apple's official documentation first** before making changes to Foundation Models or Vision framework code
+- Use authoritative sources to understand API behavior, best practices, and limitations
+- Verify implementation patterns against official documentation
+
+### Foundation Models Resources
+- [Foundation Models Overview](https://developer.apple.com/documentation/FoundationModels)
+- [Generating Content and Performing Tasks](https://developer.apple.com/documentation/foundationmodels/generating-content-and-performing-tasks-with-foundation-models)
+- [Instructions Reference](https://developer.apple.com/documentation/foundationmodels/instructions)
+- [Transcript Reference](https://developer.apple.com/documentation/foundationmodels/transcript)
+- [Apple Foundation Models Research](https://machinelearning.apple.com/research/introducing-apple-foundation-models)
+- [WWDC Code-Along Session 205](https://developer.apple.com/events/resources/code-along-205/)
+
+### Vision Framework Resources
+- [Vision Framework Documentation](https://developer.apple.com/documentation/vision)
+- [Recognizing Text in Images](https://developer.apple.com/documentation/vision/recognizing_text_in_images)

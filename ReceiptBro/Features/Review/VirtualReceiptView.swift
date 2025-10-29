@@ -1,19 +1,31 @@
 import SwiftUI
+import Shimmer
 
 /// Displays receipt data as it streams in from Foundation Models
 /// Handles PartiallyGenerated content with progressive rendering
 struct VirtualReceiptView: View {
     let data: ReceiptData.PartiallyGenerated
+    var fieldIssues: [ReceiptValidator.FieldIssue] = []
+
+    /// Helper to check if a field has issues
+    private func hasIssue(for field: ReceiptValidator.ReceiptField) -> ReceiptValidator.FieldIssue? {
+        fieldIssues.first(where: { $0.field == field })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header Section
             VStack(alignment: .leading, spacing: 8) {
                 if let merchantName = data.merchantName {
-                    Text(merchantName)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .contentTransition(.opacity)
+                    HStack(spacing: 6) {
+                        Text(merchantName)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        if let issue = hasIssue(for: .merchantName) {
+                            ValidationBadge(issue: issue)
+                        }
+                    }
+                    .contentTransition(.opacity)
                 } else {
                     shimmerPlaceholder(width: 200, height: 28)
                 }
@@ -26,10 +38,15 @@ struct VirtualReceiptView: View {
                 }
 
                 if let date = data.date {
-                    Text(formatDate(date))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.opacity)
+                    HStack(spacing: 6) {
+                        Text(formatDate(date))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if let issue = hasIssue(for: .date) {
+                            ValidationBadge(issue: issue)
+                        }
+                    }
+                    .contentTransition(.opacity)
                 }
             }
             .padding()
@@ -66,8 +83,13 @@ struct VirtualReceiptView: View {
                 VStack(spacing: 8) {
                     if let taxAmount = data.taxAmount {
                         HStack {
-                            Text("Tax")
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 4) {
+                                Text("Tax")
+                                    .foregroundStyle(.secondary)
+                                if let issue = hasIssue(for: .taxAmount) {
+                                    ValidationBadge(issue: issue, compact: true)
+                                }
+                            }
                             Spacer()
                             Text(taxAmount, format: .currency(code: data.currency ?? "USD"))
                         }
@@ -76,8 +98,13 @@ struct VirtualReceiptView: View {
 
                     if let totalAmount = data.totalAmount {
                         HStack {
-                            Text("Total")
-                                .fontWeight(.semibold)
+                            HStack(spacing: 4) {
+                                Text("Total")
+                                    .fontWeight(.semibold)
+                                if let issue = hasIssue(for: .totalAmount) {
+                                    ValidationBadge(issue: issue, compact: true)
+                                }
+                            }
                             Spacer()
                             Text(totalAmount, format: .currency(code: data.currency ?? "USD"))
                                 .fontWeight(.semibold)
@@ -212,39 +239,64 @@ struct LineItemRow: View {
     }
 }
 
+// MARK: - Validation Badge
+
+struct ValidationBadge: View {
+    let issue: ReceiptValidator.FieldIssue
+    var compact: Bool = false
+    @State private var showTooltip = false
+
+    var body: some View {
+        Button(action: {
+            showTooltip.toggle()
+        }) {
+            Image(systemName: issue.severity == .error ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(compact ? .caption : .callout)
+                .foregroundStyle(issue.severity == .error ? .red : .orange)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showTooltip) {
+            Text(issue.message)
+                .font(.caption)
+                .padding()
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
 // MARK: - Shimmer Effect
 
-extension View {
-    func shimmering() -> some View {
-        modifier(ShimmerModifier())
-    }
-}
-
-struct ShimmerModifier: ViewModifier {
-    @State private var phase: CGFloat = 0
-
-    func body(content: Content) -> some View {
-        content
-            .overlay(
-                LinearGradient(
-                    colors: [
-                        .clear,
-                        .white.opacity(0.3),
-                        .clear
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .offset(x: phase)
-                .mask(content)
-            )
-            .onAppear {
-                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    phase = 300
-                }
-            }
-    }
-}
+//extension View {
+//    func shimmering() -> some View {
+//        modifier(ShimmerModifier())
+//    }
+//}
+//
+//struct ShimmerModifier: ViewModifier {
+//    @State private var phase: CGFloat = 0
+//
+//    func body(content: Content) -> some View {
+//        content
+//            .overlay(
+//                LinearGradient(
+//                    colors: [
+//                        .clear,
+//                        .white.opacity(0.3),
+//                        .clear
+//                    ],
+//                    startPoint: .leading,
+//                    endPoint: .trailing
+//                )
+//                .offset(x: phase)
+//                .mask(content)
+//            )
+//            .onAppear {
+//                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+//                    phase = 300
+//                }
+//            }
+//    }
+//}
 
 // MARK: - Preview
 

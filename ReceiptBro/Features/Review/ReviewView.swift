@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import OSLog
+import Shimmer
 
 /// Main review screen where users can see streaming data and edit before saving
 struct ReviewView: View {
@@ -15,6 +16,7 @@ struct ReviewView: View {
     @State private var saveError: Error?
     @State private var editableData: EditableReceiptData?
     @State private var validationWarnings: [String] = []
+    @State private var validationFieldIssues: [ReceiptValidator.FieldIssue] = []
     @State private var showEditableView = false
 
     var body: some View {
@@ -34,18 +36,12 @@ struct ReviewView: View {
                     // Receipt display
                     if let receiptData = extractor.receiptData {
                         VStack(spacing: 16) {
-                            // Show validation warnings if any
-                            if !validationWarnings.isEmpty {
-                                ValidationWarningsView(warnings: validationWarnings)
-                                    .padding(.horizontal)
-                            }
-
                             // Show tap-to-edit view if editing is available
                             if showEditableView, let editableData = editableData {
                                 TapToEditReceiptView(receiptData: editableData)
                                     .padding(.horizontal)
                             } else {
-                                VirtualReceiptView(data: receiptData)
+                                VirtualReceiptView(data: receiptData, fieldIssues: validationFieldIssues)
                                     .padding(.horizontal)
                             }
                         }
@@ -111,12 +107,13 @@ struct ReviewView: View {
 
     private var extractionProgressView: some View {
         HStack(spacing: 12) {
-            Image(systemName: "sparkles")
+            Image(systemName: (extractor.progress == .performingOCR ? "text.magnifyingglass" : "sparkles"))
                 .symbolEffect(.variableColor, options: .repeat(.continuous))
 
             Text(progressMessage)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .shimmering(bandSize: 1)
             
             Spacer()
         }
@@ -192,7 +189,7 @@ struct ReviewView: View {
         case .performingOCR:
             return "Reading text from image..."
         case .extractingStructure:
-            return "Extracting receipt details..."
+            return "Extracting receipt details using onDevice AI..."
         case .complete:
             return "Complete"
         }
@@ -271,6 +268,12 @@ struct ReviewView: View {
         if let receiptData = extractor.receiptData {
             let result = ReceiptValidator.validate(receiptData)
             validationWarnings = result.warnings
+            validationFieldIssues = result.fieldIssues
+
+            // Apply auto-corrections if any were made
+            if let correctedData = result.correctedData {
+                extractor.receiptData = correctedData
+            }
 
             // Auto-remove duplicates if found
             if !result.warnings.filter({ $0.contains("duplicate") }).isEmpty {

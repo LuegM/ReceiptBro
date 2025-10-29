@@ -13,8 +13,8 @@ final class ReceiptExtractor {
     var error: Error?
     var progress: ExtractionProgress = .idle
 
-    private let session: LanguageModelSession
     private let ocrService = OCRService()
+    private let session: LanguageModelSession  // Singleton session created once at init
 
     enum ExtractionProgress {
         case idle
@@ -25,12 +25,15 @@ final class ReceiptExtractor {
 
     enum ExtractionError: LocalizedError {
         case modelUnavailable
+        case unsupportedLanguage
         case streamingFailed(Error)
 
         var errorDescription: String? {
             switch self {
             case .modelUnavailable:
                 return "Foundation Models are not available on this device"
+            case .unsupportedLanguage:
+                return "Language not supported. Please ensure your device's Apple Intelligence language is set to English in Settings > General > Language & Region > Apple Intelligence Language."
             case .streamingFailed(let error):
                 return "Extraction failed: \(error.localizedDescription)"
             }
@@ -38,21 +41,21 @@ final class ReceiptExtractor {
     }
 
     init() {
-        // Initialize Foundation Models session with role-focused instructions
-        // Instructions define behavior; format constraints are handled by @Guide attributes
+        // Create session ONCE at initialization (singleton pattern)
+        // This avoids repeated locale validation that can fail with unsupported regions
         let instructions = """
         You are a receipt data extraction assistant. Analyze OCR text from retail receipts and extract structured information with high accuracy. Preserve exact text as it appears on receipts. Only extract information that is clearly present in the OCR text.
         """
 
         self.session = LanguageModelSession(instructions: instructions)
-        Logger.extraction.info("Foundation Models session initialized")
+        Logger.extraction.info("ReceiptExtractor initialized with singleton session")
     }
 
     /// Check model availability and log status
     func checkModelAvailability() {
         Task {
             Logger.extraction.info("Checking model availability...")
-            let model = SystemLanguageModel.default
+            let model = SystemLanguageModel(useCase: .contentTagging)
             
             switch model.availability {
             case .available:
@@ -78,20 +81,17 @@ final class ReceiptExtractor {
         }
 
         do {
-            // Step 1: OCR text extraction
-            Logger.extraction.info("Starting OCR extraction from image")
+            // Step 1: Document recognition with Vision
             let ocrResult = try await ocrService.extractText(from: image)
-            Logger.extraction.info("OCR complete: \(ocrResult.lines.count) lines, avg confidence: \(ocrResult.averageConfidence)")
 
-            // Store OCR text for review
+            // Store full text for review
             self.ocrText = ocrResult.fullText
 
             // Step 2: Foundation Models structured extraction with streaming
             progress = .extractingStructure
-            await extractStructuredData(from: ocrResult.fullText)
+            await extractStructuredData(from: ocrResult)
 
         } catch {
-            Logger.extraction.error("Extraction failed: \(error.localizedDescription)")
             self.error = error
         }
     }
@@ -109,53 +109,62 @@ final class ReceiptExtractor {
             progress = .complete
         }
 
-        await extractStructuredData(from: ocrText)
+        // Create a basic OCRResult from plain text (no structured data available)
+        let ocrResult = OCRResult(
+            fullText: ocrText,
+            tables: [],
+            paragraphs: [ocrText],
+            detectedMoneyAmounts: [],
+            detectedDates: [],
+            detectedAddresses: []
+        )
+
+        await extractStructuredData(from: ocrResult)
     }
 
     // MARK: - Private Methods
 
-    private func extractStructuredData(from ocrText: String) async {
+    private func extractStructuredData(from ocrResult: OCRResult) async {
         Logger.extraction.info("Starting Foundation Models structured extraction")
+        Logger.extraction.debug("Device language: \(Locale.current.identifier)")
+        Logger.extraction.debug("Preferred languages: \(Locale.preferredLanguages)")
+
+        // CRITICAL: Check if OCR actually extracted any text
+        if ocrResult.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Logger.extraction.error("No text extracted from OCR - cannot proceed with Foundation Models")
+            Logger.extraction.error("RecognizeDocumentsRequest found \(ocrResult.tables.count) tables, \(ocrResult.paragraphs.count) paragraphs")
+            self.error = ExtractionError.streamingFailed(
+                NSError(domain: "ReceiptExtractor", code: -2, userInfo: [
+                    NSLocalizedDescriptionKey: "No text was detected in the image. The Vision framework could not recognize any tables or text. Please ensure the image is clear and contains a receipt with visible text."
+                ])
+            )
+            return
+        }
 
         do {
             // Check model availability first
-            let model = SystemLanguageModel.default
+            let model = SystemLanguageModel(useCase: .contentTagging)
             guard case .available = model.availability else {
                 Logger.extraction.error("Foundation Models not available")
                 self.error = ExtractionError.modelUnavailable
                 return
             }
 
-            // Use PromptBuilder for few-shot prompting with multiple examples
-            // Separates the extraction task, OCR data, and examples cleanly
+            // Use PromptBuilder for structured, one-shot prompting
+            // Separates the extraction task, OCR data, and example cleanly
             let prompt = Prompt {
-                "Extract structured receipt data from the OCR text below."
+                "Extract structured receipt data from the OCR text below. Use ONLY the information from this receipt - do not use values from the example."
                 ""
-                "CRITICAL RULES:"
-                "1. Use ONLY values from the provided OCR text - never copy from examples"
-                "2. Each line item must appear exactly once - NO DUPLICATES"
-                "3. Verify that item prices sum correctly (quantity × unitPrice = totalPrice)"
-                "4. For transaction ID, prefer 'Trace-Nr', 'Trace Number', or similar transaction identifiers"
-                "5. For tax amount, SUM all tax lines if multiple rates shown (e.g., 10% + 20%)"
-                "6. Date must be in YYYY-MM-DD format"
+                "OCR Text:"
+                ocrResult.fullText
                 ""
-                "OCR Text to Extract:"
-                ocrText
-                ""
-                "Format Examples (DO NOT copy these values - use actual data from OCR above):"
-                ""
-                "Example 1 - European Grocery:"
+                "IMPORTANT: The example below shows the output format only. Extract actual values from the OCR text above, not from this example:"
                 ReceiptData.exampleGroceryReceipt
-                ""
-                "Example 2 - US Retail:"
-                ReceiptData.exampleUSReceipt
-                ""
-                "Example 3 - Restaurant:"
-                ReceiptData.exampleRestaurantReceipt
             }
 
+
             // Stream response for progressive UI updates
-            let stream = session.streamResponse(
+            let stream = self.session.streamResponse(
                 to: prompt,
                 generating: ReceiptData.self
             )
@@ -175,6 +184,15 @@ final class ReceiptExtractor {
 
             Logger.extraction.info("Streaming complete after \(chunkCount) chunks")
 
+            // Log the transcript for debugging (access session transcript after streaming)
+            Logger.extraction.info("=== TRANSCRIPT DEBUG ===")
+            Logger.extraction.info("Total transcript entries: \(self.session.transcript.count)")
+
+            for (index, entry) in self.session.transcript.enumerated() {
+                Logger.extraction.info("--- Entry \(index + 1): \(String(describing: entry))")
+            }
+            Logger.extraction.info("=== END TRANSCRIPT ===\n")
+
             // Log the partial object created by the Foundation Model
             if let createdObject = self.receiptData {
                 Logger.foundationModel.debug("Foundation Model streaming complete - Created partial object: \(String(describing: createdObject))")
@@ -192,7 +210,17 @@ final class ReceiptExtractor {
 
         } catch {
             Logger.extraction.error("Structured extraction failed: \(error.localizedDescription)")
-            self.error = ExtractionError.streamingFailed(error)
+
+            // Check if this is a language-related error
+            let errorMessage = error.localizedDescription.lowercased()
+            if errorMessage.contains("unsupported language") || errorMessage.contains("locale") {
+                Logger.extraction.error("Language error detected - device Apple Intelligence language may not be supported")
+                Logger.extraction.error("Current locale: \(Locale.current.identifier)")
+                Logger.extraction.error("Preferred languages: \(Locale.preferredLanguages)")
+                self.error = ExtractionError.unsupportedLanguage
+            } else {
+                self.error = ExtractionError.streamingFailed(error)
+            }
         }
     }
 
@@ -234,7 +262,9 @@ final class ReceiptExtractor {
             paymentMethod: partial.paymentMethod,
             currency: currency,
             items: finalizedItems,
+            discountAmount: partial.discountAmount,
             taxAmount: partial.taxAmount,
+            taxType: partial.taxType,
             totalAmount: totalAmount
         )
 

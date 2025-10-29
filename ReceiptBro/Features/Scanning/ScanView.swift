@@ -2,6 +2,36 @@ import SwiftUI
 import VisionKit
 import OSLog
 
+struct ScanView: View {
+    @Environment(\.dismiss) var dismiss
+
+    @AppStorage("hasSeenTipps") var hasSeenTipps: Bool = false
+
+    let onImageCaptured: (UIImage) -> Void
+
+    var body: some View {
+        DocumentCameraView(
+            onImageCaptured: { image in
+                onImageCaptured(image)
+            },
+            onCancel: {
+                dismiss()
+            }
+        )
+        .interactiveDismissDisabled()
+        .ignoresSafeArea()
+        .if(!hasSeenTipps) { view in
+            view.overlay {
+                ScanTipsView(onLetsGoTapped: {
+                    hasSeenTipps = true
+                    }
+                )
+                .ignoresSafeArea()
+            }
+        }
+    }
+}
+
 /// SwiftUI wrapper for VNDocumentCameraViewController
 struct DocumentCameraView: UIViewControllerRepresentable {
     @Environment(\.dismiss) private var dismiss

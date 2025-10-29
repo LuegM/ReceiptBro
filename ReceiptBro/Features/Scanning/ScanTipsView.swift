@@ -2,9 +2,7 @@ import SwiftUI
 
 /// Tips screen shown before scanning to help users get better results
 struct ScanTipsView: View {
-    let onScanTapped: () -> Void
-    let onPhotoLibraryTapped: () -> Void
-    let onDismiss: () -> Void
+    let onLetsGoTapped: () -> Void
 
     var body: some View {
         NavigationStack {
@@ -23,10 +21,10 @@ struct ScanTipsView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.top, 32)
+                .padding(.top, 80)
 
                 // Tips list
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 32) {
                     TipRow(
                         icon: "light.max",
                         title: "Good Lighting",
@@ -51,16 +49,19 @@ struct ScanTipsView: View {
                         description: "Make sure all text is sharp and readable"
                     )
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 32)
+                .glassEffect(in: RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, 8)
 
                 Spacer()
 
                 // Action buttons
                 VStack(spacing: 12) {
                     Button {
-                        onScanTapped()
+                        onLetsGoTapped()
                     } label: {
-                        Label("Take Photo", systemImage: "camera.fill")
+                        Label("Understood", systemImage: "checkmark.circle.fill")
                             .font(.headline)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -68,31 +69,13 @@ struct ScanTipsView: View {
                             .background(Color.blue.gradient)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-
-                    Button {
-                        onPhotoLibraryTapped()
-                    } label: {
-                        Label("Choose from Library", systemImage: "photo.on.rectangle")
-                            .font(.headline)
-                            .foregroundStyle(.blue)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 32)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        onDismiss()
-                    }
-                }
-            }
+            .padding(.top, 80)
         }
+        .glassEffect(in: Rectangle())
     }
 }
 
@@ -123,8 +106,6 @@ struct TipRow: View {
 
 #Preview {
     ScanTipsView(
-        onScanTapped: {},
-        onPhotoLibraryTapped: {},
-        onDismiss: {}
+        onLetsGoTapped: {}
     )
 }

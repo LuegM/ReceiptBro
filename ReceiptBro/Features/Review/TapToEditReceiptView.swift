@@ -259,7 +259,9 @@ struct TapToEditLineItemRow: View {
             EditableLineItem(name: "Clever Weizenmehl", quantity: 2.0, unitPrice: 0.75, totalPrice: 1.50),
             EditableLineItem(name: "Happy Day Maracuja", quantity: 1.0, unitPrice: 2.99, totalPrice: 2.99)
         ],
+        discountAmount: 0,
         taxAmount: 0.82,
+        taxType: "included",
         totalAmount: 6.47
     ))
     .padding()
