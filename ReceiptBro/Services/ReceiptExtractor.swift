@@ -1,12 +1,12 @@
 import Foundation
 import FoundationModels
 import OSLog
+import SwiftUI
 import UIKit
 
 @Observable
 @MainActor
 final class ReceiptExtractor {
-    // Streaming state - uses PartiallyGenerated for progressive updates
     var receiptData: ReceiptData.PartiallyGenerated?
     var ocrText: String?
     var isProcessing = false
@@ -14,7 +14,7 @@ final class ReceiptExtractor {
     var progress: ExtractionProgress = .idle
 
     private let ocrService = OCRService()
-    private let session: LanguageModelSession  // Singleton session created once at init
+    private let session: LanguageModelSession
 
     enum ExtractionProgress {
         case idle
@@ -41,17 +41,36 @@ final class ReceiptExtractor {
     }
 
     init() {
-        // Create session ONCE at initialization (singleton pattern)
-        // This avoids repeated locale validation that can fail with unsupported regions
         let instructions = """
         You are a receipt data extraction assistant. Analyze OCR text from retail receipts and extract structured information with high accuracy. Preserve exact text as it appears on receipts. Only extract information that is clearly present in the OCR text.
+
+        CRITICAL RULES:
+
+        1. QUANTITY LINES WITH EXPLICIT MULTIPLIER:
+        When you see a pattern like '2 x 0.99' or '2 x 0,99' merged with a product line (e.g., '2 x 0.99 Clever Sauerrahm 1.98'), this means:
+        - quantity = 2, unitPrice = 0.99, totalPrice = 1.98
+        The product name is everything between the unit price and the total price.
+
+        2. INFER QUANTITY WHEN MATH INDICATES MULTIPLES:
+        When a line starts with just a price followed by a product and ends with a larger price (e.g., '0.99 Clever Sauerrahm 1.98'), check the math:
+        - If firstPrice × 2 = lastPrice → quantity = 2
+        - If firstPrice × 3 = lastPrice → quantity = 3
+        - If firstPrice = lastPrice → quantity = 1
+        Example: '0.99 Clever Sauerrahm 1.98' → 0.99 × 2 = 1.98 → quantity=2, unitPrice=0.99, totalPrice=1.98
+
+        3. ALL PRICES MUST BE POSITIVE:
+        Never output negative values for unitPrice or totalPrice. If you calculate a negative, something is wrong.
+
+        4. DISCOUNT RULES:
+        - ONLY set discountAmount if there is an EXPLICIT discount keyword: 'Discount', 'Rabatt', 'Rabais', '-', 'Savings'
+        - Tax lines (MwSt, VAT, GST, Sales Tax, Tax) are NOT discounts - leave discountAmount as null
+        - If unsure, leave discountAmount as null
         """
 
         self.session = LanguageModelSession(instructions: instructions)
         Logger.extraction.info("ReceiptExtractor initialized with singleton session")
     }
 
-    /// Check model availability and log status
     func checkModelAvailability() {
         Task {
             Logger.extraction.info("Checking model availability...")
@@ -66,8 +85,7 @@ final class ReceiptExtractor {
         }
     }
 
-    /// Extract receipt data from an image using OCR + Foundation Models streaming
-    /// - Parameter image: The receipt image to process
+    /// OCR + LLM streaming extraction
     func extractFromImage(_ image: UIImage) async {
         isProcessing = true
         progress = .performingOCR
@@ -81,13 +99,8 @@ final class ReceiptExtractor {
         }
 
         do {
-            // Step 1: Document recognition with Vision
             let ocrResult = try await ocrService.extractText(from: image)
-
-            // Store full text for review
             self.ocrText = ocrResult.fullText
-
-            // Step 2: Foundation Models structured extraction with streaming
             progress = .extractingStructure
             await extractStructuredData(from: ocrResult)
 
@@ -96,8 +109,7 @@ final class ReceiptExtractor {
         }
     }
 
-    /// Extract receipt data from pre-extracted OCR text (for testing or manual input)
-    /// - Parameter ocrText: Raw OCR text from receipt
+    /// From raw OCR text (for testing)
     func extractFromText(_ ocrText: String) async {
         isProcessing = true
         progress = .extractingStructure
@@ -109,7 +121,6 @@ final class ReceiptExtractor {
             progress = .complete
         }
 
-        // Create a basic OCRResult from plain text (no structured data available)
         let ocrResult = OCRResult(
             fullText: ocrText,
             tables: [],
@@ -122,14 +133,13 @@ final class ReceiptExtractor {
         await extractStructuredData(from: ocrResult)
     }
 
-    // MARK: - Private Methods
+    // MARK: - Private
 
     private func extractStructuredData(from ocrResult: OCRResult) async {
         Logger.extraction.info("Starting Foundation Models structured extraction")
         Logger.extraction.debug("Device language: \(Locale.current.identifier)")
         Logger.extraction.debug("Preferred languages: \(Locale.preferredLanguages)")
 
-        // CRITICAL: Check if OCR actually extracted any text
         if ocrResult.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Logger.extraction.error("No text extracted from OCR - cannot proceed with Foundation Models")
             Logger.extraction.error("RecognizeDocumentsRequest found \(ocrResult.tables.count) tables, \(ocrResult.paragraphs.count) paragraphs")
@@ -142,7 +152,6 @@ final class ReceiptExtractor {
         }
 
         do {
-            // Check model availability first
             let model = SystemLanguageModel(useCase: .contentTagging)
             guard case .available = model.availability else {
                 Logger.extraction.error("Foundation Models not available")
@@ -150,31 +159,30 @@ final class ReceiptExtractor {
                 return
             }
 
-            // Use PromptBuilder for structured, one-shot prompting
-            // Separates the extraction task, OCR data, and example cleanly
             let prompt = Prompt {
                 "Extract structured receipt data from the OCR text below. Use ONLY the information from this receipt - do not use values from the example."
                 ""
                 "OCR Text:"
                 ocrResult.fullText
                 ""
-                "IMPORTANT: The example below shows the output format only. Extract actual values from the OCR text above, not from this example:"
-                ReceiptData.exampleGroceryReceipt
             }
 
-
-            // Stream response for progressive UI updates
             let stream = self.session.streamResponse(
                 to: prompt,
-                generating: ReceiptData.self
+                generating: ReceiptData.self,
+                includeSchemaInPrompt: true,
+                options: GenerationOptions(
+                    sampling: .greedy
+                )
             )
 
             Logger.extraction.info("Streaming Foundation Models response...")
 
             var chunkCount = 0
             for try await partialResponse in stream {
-                // Update with partial data as it streams in
-                self.receiptData = partialResponse.content
+                withAnimation(.smooth) {
+                    self.receiptData = partialResponse.content
+                }
                 chunkCount += 1
 
                 if chunkCount % 5 == 0 {
@@ -184,7 +192,6 @@ final class ReceiptExtractor {
 
             Logger.extraction.info("Streaming complete after \(chunkCount) chunks")
 
-            // Log the transcript for debugging (access session transcript after streaming)
             Logger.extraction.info("=== TRANSCRIPT DEBUG ===")
             Logger.extraction.info("Total transcript entries: \(self.session.transcript.count)")
 
@@ -193,12 +200,10 @@ final class ReceiptExtractor {
             }
             Logger.extraction.info("=== END TRANSCRIPT ===\n")
 
-            // Log the partial object created by the Foundation Model
             if let createdObject = self.receiptData {
                 Logger.foundationModel.debug("Foundation Model streaming complete - Created partial object: \(String(describing: createdObject))")
             }
 
-            // Auto-clean duplicates after streaming completes
             if var receiptData = self.receiptData, let items = receiptData.items {
                 let cleanedItems = ReceiptValidator.removeDuplicateItems(from: items)
                 if cleanedItems.count != items.count {
@@ -211,7 +216,6 @@ final class ReceiptExtractor {
         } catch {
             Logger.extraction.error("Structured extraction failed: \(error.localizedDescription)")
 
-            // Check if this is a language-related error
             let errorMessage = error.localizedDescription.lowercased()
             if errorMessage.contains("unsupported language") || errorMessage.contains("locale") {
                 Logger.extraction.error("Language error detected - device Apple Intelligence language may not be supported")
@@ -224,8 +228,7 @@ final class ReceiptExtractor {
         }
     }
 
-    /// Convert the partially generated receipt to a concrete ReceiptData
-    /// Call this after streaming is complete and user has reviewed/edited
+    /// Convert partial to concrete ReceiptData after user review
     func finalizeReceipt() -> ReceiptData? {
         guard let partial = receiptData,
               let merchantName = partial.merchantName,
@@ -237,7 +240,6 @@ final class ReceiptExtractor {
             return nil
         }
 
-        // Convert partial line items to concrete items
         let finalizedItems = items.compactMap { partialItem -> LineItemData? in
             guard let name = partialItem.name,
                   let quantity = partialItem.quantity,
@@ -258,7 +260,6 @@ final class ReceiptExtractor {
             merchantName: merchantName,
             address: partial.address,
             date: date,
-            transactionId: partial.transactionId,
             paymentMethod: partial.paymentMethod,
             currency: currency,
             items: finalizedItems,

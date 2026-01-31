@@ -27,7 +27,7 @@ final class LineItem {
         self.receipt = receipt
     }
 
-    /// Create LineItem from Foundation Models extracted data
+    /// From LineItemData (LLM output)
     convenience init(from itemData: LineItemData, receipt: Receipt? = nil) {
         self.init(
             name: itemData.name,

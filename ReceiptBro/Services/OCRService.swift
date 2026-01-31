@@ -25,66 +25,52 @@ final class OCRService {
         }
     }
 
-    /// Extract structured document data from image using Vision framework
-    /// Tries RecognizeDocumentsRequest first (for table receipts), falls back to VNRecognizeTextRequest
-    /// - Parameter image: The receipt image to process
-    /// - Returns: Structured OCR result with tables, paragraphs, and detected data
+    /// Tries RecognizeDocumentsRequest first, falls back to VNRecognizeTextRequest
     func extractText(from image: UIImage) async throws -> OCRResult {
         Logger.ocr.info("Starting document recognition")
 
-        // Convert UIImage to Data (for Swift 6 API)
         guard let imageData = image.jpegData(compressionQuality: 1.0) else {
             Logger.ocr.error("Failed to convert UIImage to JPEG data")
             throw OCRError.imageConversionFailed
         }
 
-        // Convert UIImage to CGImage (for old API fallback)
         guard let cgImage = image.cgImage else {
             Logger.ocr.error("Failed to get CGImage from UIImage")
             throw OCRError.imageConversionFailed
         }
 
         do {
-            // Try Swift 6 RecognizeDocumentsRequest first (for receipts with table structure)
             Logger.ocr.info("Attempting RecognizeDocumentsRequest for table extraction")
             let request = RecognizeDocumentsRequest()
             let observations = try await request.perform(on: imageData)
 
             if let document = observations.first?.document, !document.tables.isEmpty {
-                // Success! Found tables
                 Logger.ocr.info("Document has \(document.tables.count) tables - using structured extraction")
                 return try await extractFromDocumentObservation(document)
             } else {
-                // No tables found - fall back to text recognition
                 Logger.ocr.warning("No tables detected - falling back to VNRecognizeTextRequest")
                 return try await extractFromTextRecognition(cgImage)
             }
 
         } catch {
-            // RecognizeDocumentsRequest failed - fall back
             Logger.ocr.warning("RecognizeDocumentsRequest failed: \(error.localizedDescription)")
             Logger.ocr.info("Falling back to VNRecognizeTextRequest")
             return try await extractFromTextRecognition(cgImage)
         }
     }
 
-    // MARK: - Private Extraction Methods
+    // MARK: - Private
 
-    /// Extract from DocumentObservation (Swift 6 API - structured documents including receipts)
     private func extractFromDocumentObservation(_ document: DocumentObservation.Container) async throws -> OCRResult {
         Logger.ocr.debug("Processing document with \(document.tables.count) tables, \(document.paragraphs.count) paragraphs")
 
-        // Extract tables from document
         let tables = document.tables.map { extractTable(from: $0) }
-
-        // Extract paragraphs (text outside tables)
         let paragraphs = document.paragraphs.map { $0.transcript }
 
         var detectedMoney: [DetectedMoney] = []
         var detectedDates: [DateComponents] = []
         var detectedAddresses: [String] = []
 
-        // Extract detected data from paragraphs
         for paragraph in document.paragraphs {
             for data in paragraph.detectedData {
                 switch data.match.details {
@@ -114,7 +100,6 @@ final class OCRService {
             }
         }
 
-        // Extract detected data from tables
         for table in document.tables {
             for row in table.rows {
                 for cell in row {
@@ -148,15 +133,10 @@ final class OCRService {
             }
         }
 
-        // Get full text from both paragraphs and tables
         var fullTextParts: [String] = []
-
-        // Add paragraph text
         if !paragraphs.isEmpty {
             fullTextParts.append(contentsOf: paragraphs)
         }
-
-        // Add table text
         if !tables.isEmpty {
             let tableText = tables.flatMap { table in
                 table.rows.flatMap { $0 }
@@ -199,12 +179,17 @@ final class OCRService {
                     return
                 }
 
-                // Extract word data with bounding box information
                 var wordData: [(text: String, y: CGFloat, x: CGFloat, height: CGFloat)] = []
 
                 for observation in observations {
-                    guard let candidate = observation.topCandidates(1).first else { continue }
+                    let allCandidates = observation.topCandidates(3)
                     let box = observation.boundingBox
+
+                    for (idx, candidate) in allCandidates.enumerated() {
+                        Logger.ocr.debug("Candidate[\(idx)] '\(candidate.string)' conf=\(String(format: "%.2f", candidate.confidence)) y=\(String(format: "%.4f", box.midY))")
+                    }
+
+                    guard let candidate = allCandidates.first else { continue }
                     wordData.append((
                         text: candidate.string,
                         y: box.midY,
@@ -213,19 +198,21 @@ final class OCRService {
                     ))
                 }
 
-                // Calculate adaptive Y tolerance based on median text height
+                Logger.ocr.info("=== RAW OBSERVATIONS (\(wordData.count) total) ===")
+                for (index, word) in wordData.enumerated() {
+                    Logger.ocr.info("[\(index)] '\(word.text)' y=\(String(format: "%.4f", word.y)) x=\(String(format: "%.4f", word.x)) h=\(String(format: "%.4f", word.height))")
+                }
+                Logger.ocr.info("=== END RAW OBSERVATIONS ===")
+
                 let heights = wordData.map { $0.height }.sorted()
                 let medianHeight = heights.isEmpty ? 0.02 : heights[heights.count / 2]
-                // Use 40% of median height as tolerance for line grouping
                 let yTolerance: CGFloat = medianHeight * 0.4
 
                 Logger.ocr.debug("Median text height: \(medianHeight), Y tolerance: \(yTolerance)")
 
-                // Group words into lines based on Y position
                 var lines: [[(text: String, x: CGFloat, y: CGFloat)]] = []
 
                 for word in wordData {
-                    // Try to find an existing line within yTolerance of Y
                     if let index = lines.firstIndex(where: { abs($0.first!.y - word.y) < yTolerance }) {
                         lines[index].append((text: word.text, x: word.x, y: word.y))
                     } else {
@@ -233,29 +220,40 @@ final class OCRService {
                     }
                 }
 
-                // Sort lines by Y position (top to bottom - highest Y first since Vision uses bottom-left origin)
+                // Top to bottom (Vision uses bottom-left origin)
                 lines.sort { line1, line2 in
                     guard let y1 = line1.first?.y, let y2 = line2.first?.y else { return false }
                     return y1 > y2
                 }
 
-                // Sort each line's words by X position (left to right) and extract the text
                 let finalLines: [String] = lines.map { line in
                     line.sorted(by: { $0.x < $1.x }).map { $0.text }.joined(separator: " ")
                 }
 
-                // Join all lines into a full text string
-                let fullText = finalLines.joined(separator: "\n")
+                Logger.ocr.info("=== GROUPED LINES (\(finalLines.count) total) ===")
+                for (index, line) in finalLines.enumerated() {
+                    Logger.ocr.info("Line[\(index)]: '\(line)'")
+                }
+                Logger.ocr.info("=== END GROUPED LINES ===")
+
+                let mergedLines = self.mergeQuantityLines(finalLines)
+
+                Logger.ocr.info("=== MERGED LINES (\(mergedLines.count) total) ===")
+                for (index, line) in mergedLines.enumerated() {
+                    Logger.ocr.info("Merged[\(index)]: '\(line)'")
+                }
+                Logger.ocr.info("=== END MERGED LINES ===")
+
+                let fullText = mergedLines.joined(separator: "\n")
 
                 Logger.ocr.info("Text recognition complete:")
-                Logger.ocr.info("  Reconstructed Lines: \(finalLines.count)")
+                Logger.ocr.info("  Original Lines: \(finalLines.count), Merged Lines: \(mergedLines.count)")
                 Logger.ocr.info("  Full text length: \(fullText.count) characters")
 
-                // Return OCRResult with grouped lines as paragraphs
                 let result = OCRResult(
                     fullText: fullText,
                     tables: [],
-                    paragraphs: finalLines,
+                    paragraphs: mergedLines,
                     detectedMoneyAmounts: [],
                     detectedDates: [],
                     detectedAddresses: []
@@ -264,7 +262,6 @@ final class OCRService {
                 continuation.resume(returning: result)
             }
 
-            // Configure text recognition request
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
             request.recognitionLanguages = ["de-DE", "en-US"]
@@ -282,6 +279,41 @@ final class OCRService {
     }
 
 
+
+    /// Merge "2 x 0.99" lines with the following product line
+    private func mergeQuantityLines(_ lines: [String]) -> [String] {
+        var result: [String] = []
+        var pendingQuantityLine: String? = nil
+        let quantityPattern = #"^\s*(\d+\s*[xX×]\s*)?\d+[.,]\d{2}\s*$"#
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if let pending = pendingQuantityLine {
+                result.append("\(pending) \(trimmed)")
+                pendingQuantityLine = nil
+                Logger.ocr.debug("Merged quantity line: '\(pending)' with '\(trimmed)'")
+            } else if trimmed.range(of: quantityPattern, options: .regularExpression) != nil {
+                // 2+ letters = product name, not qty line
+                let hasProductNameWord = trimmed.range(of: #"[a-zA-ZäöüÄÖÜß]{2,}"#, options: .regularExpression) != nil
+                guard !hasProductNameWord else {
+                    result.append(trimmed)
+                    continue
+                }
+                pendingQuantityLine = trimmed
+                Logger.ocr.debug("Found quantity line to merge: '\(trimmed)'")
+            } else {
+                result.append(trimmed)
+            }
+        }
+
+        if let pending = pendingQuantityLine {
+            result.append(pending)
+            Logger.ocr.warning("Trailing quantity line not merged: '\(pending)'")
+        }
+
+        return result
+    }
 
     private func extractTable(from table: DocumentObservation.Container.Table) -> DocumentTable {
         let rows = table.rows.map { row in

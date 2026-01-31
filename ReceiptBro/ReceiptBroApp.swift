@@ -7,11 +7,9 @@ struct ReceiptBroApp: App {
 
     init() {
         do {
-            // Create model configuration with explicit store URL
             let storeURL = URL.applicationSupportDirectory
                 .appending(path: "ReceiptBro.sqlite")
 
-            // Ensure Application Support directory exists
             try FileManager.default.createDirectory(
                 at: URL.applicationSupportDirectory,
                 withIntermediateDirectories: true
@@ -27,7 +25,6 @@ struct ReceiptBroApp: App {
                 configurations: config
             )
 
-            // Enable autosave
             container.mainContext.autosaveEnabled = true
 
         } catch {

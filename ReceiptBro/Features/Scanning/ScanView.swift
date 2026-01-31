@@ -32,7 +32,7 @@ struct ScanView: View {
     }
 }
 
-/// SwiftUI wrapper for VNDocumentCameraViewController
+/// VNDocumentCameraViewController wrapper
 struct DocumentCameraView: UIViewControllerRepresentable {
     @Environment(\.dismiss) private var dismiss
 
@@ -47,7 +47,6 @@ struct DocumentCameraView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {
-        // No updates needed
     }
 
     func makeCoordinator() -> Coordinator {
@@ -69,7 +68,6 @@ struct DocumentCameraView: UIViewControllerRepresentable {
         ) {
             Logger.scanning.info("Document camera scan completed with \(scan.pageCount) page(s)")
 
-            // Get the first page (receipts are typically single page)
             guard scan.pageCount > 0 else {
                 Logger.scanning.warning("No pages in scan")
                 onCancel()

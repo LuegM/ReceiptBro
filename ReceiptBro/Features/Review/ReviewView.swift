@@ -3,56 +3,49 @@ import SwiftData
 import OSLog
 import Shimmer
 
-/// Main review screen where users can see streaming data and edit before saving
 struct ReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     let image: UIImage
-    let extractor: ReceiptExtractor
+    @Bindable var extractor: ReceiptExtractor
 
     @State private var isSaving = false
     @State private var showingSaveError = false
     @State private var saveError: Error?
-    @State private var editableData: EditableReceiptData?
     @State private var validationWarnings: [String] = []
     @State private var validationFieldIssues: [ReceiptValidator.FieldIssue] = []
-    @State private var showEditableView = false
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Progress indicator
-                    if extractor.isProcessing {
-                        extractionProgressView
-                    }
-
-                    // Error state
-                    if let error = extractor.error {
+            Group {
+                if let error = extractor.error {
+                    ScrollView {
                         errorView(error)
+                            .padding()
                     }
-
-                    // Receipt display
-                    if let receiptData = extractor.receiptData {
-                        VStack(spacing: 16) {
-                            // Show tap-to-edit view if editing is available
-                            if showEditableView, let editableData = editableData {
-                                TapToEditReceiptView(receiptData: editableData)
-                                    .padding(.horizontal)
-                            } else {
-                                VirtualReceiptView(data: receiptData, fieldIssues: validationFieldIssues)
-                                    .padding(.horizontal)
+                } else if extractor.receiptData != nil {
+                    ScrollViewReceiptEditorView(
+                        receiptData: $extractor.receiptData.bound,
+                        isStreaming: extractor.isProcessing,
+                        validationIssues: validationFieldIssues,
+                        ocrText: extractor.ocrText,
+                        showProgress: extractor.isProcessing,
+                        progressMessage: progressMessage,
+                        image: image
+                    )
+                    .environment(\.editMode, $editMode)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            if extractor.isProcessing {
+                                extractionProgressView
                             }
                         }
-                    }
-
-                    // OCR text section
-                    if !extractor.isProcessing, let ocrText = extractor.ocrText {
-                        ocrTextSection(ocrText)
+                        .padding()
                     }
                 }
-                .padding(.vertical)
             }
             .navigationTitle("Review Receipt")
             .navigationBarTitleDisplayMode(.inline)
@@ -65,15 +58,8 @@ struct ReviewView: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     if !extractor.isProcessing && extractor.receiptData != nil {
-                        if showEditableView {
-                            Button("Done Editing") {
-                                showEditableView = false
-                            }
-                        } else {
-                            Button("Edit") {
-                                enterEditMode()
-                            }
-                        }
+                        EditButton()
+                            .environment(\.editMode, $editMode)
                     }
                 }
 
@@ -95,7 +81,6 @@ struct ReviewView: View {
                 }
             }
             .onChange(of: extractor.isProcessing) { wasProcessing, isProcessing in
-                // When processing completes, validate the data
                 if wasProcessing && !isProcessing && extractor.receiptData != nil {
                     validateExtractedData()
                 }
@@ -140,46 +125,6 @@ struct ReviewView: View {
         .padding(.horizontal)
     }
 
-    private func ocrTextSection(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("OCR Text")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-
-            ScrollView {
-                Text(text)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .frame(maxHeight: 200)
-            .padding(.horizontal)
-        }
-    }
-
-//    private var originalImageThumbnail: some View {
-//        VStack(alignment: .leading, spacing: 8) {
-//            Text("Original Image")
-//                .font(.subheadline)
-//                .foregroundStyle(.secondary)
-//
-//            Image(uiImage: image)
-//                .resizable()
-//                .scaledToFit()
-//                .frame(maxHeight: 300)
-//                .clipShape(RoundedRectangle(cornerRadius: 8))
-//                .overlay(
-//                    RoundedRectangle(cornerRadius: 8)
-//                        .stroke(Color(.separator), lineWidth: 1)
-//                )
-//        }
-//        .padding(.horizontal)
-//    }
-
     // MARK: - Computed Properties
 
     private var progressMessage: String {
@@ -197,36 +142,8 @@ struct ReviewView: View {
 
     // MARK: - Actions
 
-    private func enterEditMode() {
-        // Create editable data from current receipt if not already created
-        if editableData == nil, let receiptData = extractor.receiptData {
-            Logger.ui.info("Creating editable receipt data")
-            if let editable = EditableReceiptData(from: receiptData) {
-                editableData = editable
-                Logger.ui.info("Editable data created successfully")
-            } else {
-                Logger.ui.error("Failed to create EditableReceiptData from partial data")
-                Logger.ui.error("Merchant: \(String(describing: receiptData.merchantName))")
-                Logger.ui.error("Date: \(String(describing: receiptData.date))")
-                Logger.ui.error("Currency: \(String(describing: receiptData.currency))")
-                Logger.ui.error("Total: \(String(describing: receiptData.totalAmount))")
-                return
-            }
-        }
-        showEditableView = true
-    }
-
     private func saveReceipt() async {
-        // If editing, convert back to ReceiptData first
-        var finalizedData: ReceiptData?
-
-        if let editableData = editableData, showEditableView {
-            finalizedData = editableData.toReceiptData()
-        } else {
-            finalizedData = extractor.finalizeReceipt()
-        }
-
-        guard let finalizedData = finalizedData else {
+        guard let finalizedData = extractor.finalizeReceipt() else {
             saveError = NSError(
                 domain: "ReviewView",
                 code: -1,
@@ -240,21 +157,12 @@ struct ReviewView: View {
         defer { isSaving = false }
 
         do {
-            // Convert image to data for storage
             let imageData = image.jpegData(compressionQuality: 0.7)
-
-            // Create Receipt from finalized data
             let receipt = try Receipt(from: finalizedData, imageData: imageData)
-
-            // Insert into SwiftData context
             modelContext.insert(receipt)
-
-            // Save context
             try modelContext.save()
 
             Logger.storage.info("Receipt saved successfully: \(receipt.merchantName)")
-
-            // Dismiss after successful save
             dismiss()
 
         } catch {
@@ -270,24 +178,12 @@ struct ReviewView: View {
             validationWarnings = result.warnings
             validationFieldIssues = result.fieldIssues
 
-            // Apply auto-corrections if any were made
             if let correctedData = result.correctedData {
                 extractor.receiptData = correctedData
-            }
-
-            // Auto-remove duplicates if found
-            if !result.warnings.filter({ $0.contains("duplicate") }).isEmpty {
-                if var items = receiptData.items {
-                    items = ReceiptValidator.removeDuplicateItems(from: items)
-                    // Note: Can't directly modify receiptData.items as it's immutable
-                    // The user will need to manually delete duplicates in edit mode
-                }
             }
         }
     }
 }
-
-// MARK: - Validation Warnings View
 
 struct ValidationWarningsView: View {
     let warnings: [String]
@@ -324,10 +220,7 @@ struct ValidationWarningsView: View {
     }
 }
 
-// MARK: - View Extension for Validation
-
 extension ReviewView {
-    /// Call validation after extraction completes
     func performValidation() {
         validateExtractedData()
     }

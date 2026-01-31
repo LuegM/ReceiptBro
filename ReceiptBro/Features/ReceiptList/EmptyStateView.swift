@@ -17,13 +17,11 @@ struct EmptyStateView: View {
                     .frame(width: 80)
                     .foregroundStyle(.gray.gradient.opacity(0.5))
                     .overlay {
-                      // Background stroke for contrast
                       RoundedRectangle(cornerRadius: 8)
                           .stroke(Color(.systemBackground), lineWidth: 6)
                           .frame(width: 130, height: 6)
                           .rotationEffect(.degrees(-45))
 
-                      // Main slash
                         RoundedRectangle(cornerRadius: 8)
                           .fill(.gray.opacity(0.7))
                           .frame(width: 130, height: 4)

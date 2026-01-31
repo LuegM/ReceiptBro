@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// Tips screen shown before scanning to help users get better results
 struct ScanTipsView: View {
     let onLetsGoTapped: () -> Void
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 32) {
-                // Header
                 VStack(spacing: 12) {
                     Image(systemName: "camera.viewfinder")
                         .font(.system(size: 60))
@@ -23,7 +21,6 @@ struct ScanTipsView: View {
                 }
                 .padding(.top, 80)
 
-                // Tips list
                 VStack(alignment: .leading, spacing: 32) {
                     TipRow(
                         icon: "light.max",
@@ -56,7 +53,6 @@ struct ScanTipsView: View {
 
                 Spacer()
 
-                // Action buttons
                 VStack(spacing: 12) {
                     Button {
                         onLetsGoTapped()

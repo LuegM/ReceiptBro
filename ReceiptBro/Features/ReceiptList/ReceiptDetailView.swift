@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 
-/// Detail view showing complete receipt information
 struct ReceiptDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -14,7 +13,7 @@ struct ReceiptDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Receipt image if available
+                // Image
                 if let imageData = receipt.imageData,
                    let uiImage = UIImage(data: imageData) {
                     Image(uiImage: uiImage)
@@ -24,7 +23,6 @@ struct ReceiptDetailView: View {
                         .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
                 }
 
-                // Receipt details card
                 VStack(alignment: .leading, spacing: 0) {
                     // Header
                     VStack(alignment: .leading, spacing: 8) {
@@ -47,7 +45,7 @@ struct ReceiptDetailView: View {
 
                     Divider()
 
-                    // Line items
+                    // Line Items
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(receipt.items) { item in
                             LineItemDetailRow(item: item)
@@ -85,21 +83,13 @@ struct ReceiptDetailView: View {
 
                     Divider()
 
-                    // Additional info
+                    // Extra Info
                     VStack(alignment: .leading, spacing: 12) {
                         if let paymentMethod = receipt.paymentMethod {
                             DetailInfoRow(
                                 icon: "creditcard.fill",
                                 label: "Payment Method",
                                 value: paymentMethod
-                            )
-                        }
-
-                        if let transactionId = receipt.transactionId {
-                            DetailInfoRow(
-                                icon: "number",
-                                label: "Transaction ID",
-                                value: transactionId
                             )
                         }
 
@@ -158,7 +148,6 @@ struct ReceiptDetailView: View {
 struct LineItemDetailRow: View {
     let item: LineItem
 
-    // Get currency from the receipt relationship
     var currency: String {
         item.receipt?.currency ?? "USD"
     }

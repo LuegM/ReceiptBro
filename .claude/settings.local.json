@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:datawizz.ai)",
+      "WebFetch(domain:www.natashatherobot.com)",
+      "WebFetch(domain:azamsharp.com)",
+      "Bash(xcodebuild:*)",
+      "Skill(humanizer)"
+    ]
+  }
+}

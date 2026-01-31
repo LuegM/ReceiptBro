@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 
-/// Main list view showing all saved receipts
 struct ReceiptListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
@@ -21,8 +20,7 @@ struct ReceiptListView: View {
         } else {
             return receipts.filter { receipt in
                 receipt.merchantName.localizedCaseInsensitiveContains(searchText) ||
-                receipt.address?.localizedCaseInsensitiveContains(searchText) == true ||
-                receipt.transactionId?.localizedCaseInsensitiveContains(searchText) == true
+                receipt.address?.localizedCaseInsensitiveContains(searchText) == true
             }
         }
     }
@@ -108,19 +106,10 @@ struct ReceiptListView: View {
 
     private func handleImageCapture(_ image: UIImage) {
         capturedImage = image
-
-        // Create a fresh extractor for each scan to avoid context window accumulation
-        // LanguageModelSession maintains a transcript that cannot be cleared,
-        // so we need a new session (via new extractor) for each document
-        extractor = ReceiptExtractor()
-
-        // Dismiss ScanView if it's showing
+        extractor = ReceiptExtractor()  // new session per document
         showingScanView = false
-
-        // Show ReviewView
         showingReviewView = true
 
-        // Start extraction immediately
         Task {
             await extractor?.extractFromImage(image)
         }
@@ -132,7 +121,7 @@ struct ReceiptRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Thumbnail or icon
+            // Thumbnail
             if let imageData = receipt.imageData,
                let uiImage = UIImage(data: imageData) {
                 Image(uiImage: uiImage)
@@ -150,7 +139,7 @@ struct ReceiptRowView: View {
                     }
             }
 
-            // Receipt info
+            // Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(receipt.merchantName)
                     .font(.headline)
