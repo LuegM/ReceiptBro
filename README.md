@@ -2,7 +2,7 @@
 
 **Digital Invoice** -- iOS App zur Rechnungserfassung mit OCR und On-Device AI
 
-Projekt Nr. 9 | Michael Luegmayer | Matrikelnummer 2410838005
+Michael Luegmayer 
 
 ---
 
@@ -83,34 +83,13 @@ Das LLM bekommt den OCR-Text als Input und gibt ein `ReceiptData` Struct zurueck
 
 Die System-Instructions enthalten Regeln fuer Mengenberechnung, Preisextraktion und Rabatterkennung. Greedy Sampling wird verwendet damit die Ergebnisse deterministisch sind.
 
-## Systemvoraussetzungen
-
-- iOS 26+ (fuer Foundation Models)
-- iPhone mit Apple Intelligence Support (A17 Pro oder neuer)
-- Xcode 26+
-
-## Build
-
-```bash
-open ReceiptBro.xcodeproj
-# Dann in Xcode: Cmd+R
-```
-
-Oder per Commandline:
-```bash
-xcodebuild -project ReceiptBro.xcodeproj -scheme ReceiptBro \
-  -destination 'platform=iOS Simulator,name=iPhone 16' build
-```
-
-Keine externen Dependencies. Alles Apple-eigene Frameworks.
-
 ## Datenmodell
 
 Zwei getrennte Modell-Hierarchien:
 
-**Fuer LLM-Extraktion** (`ReceiptData`, `LineItemData`): Mit `@Generable` und `@Guide` Attributen versehen, damit das Foundation Model weiss was es extrahieren soll.
+**Für LLM-Extraktion** (`ReceiptData`, `LineItemData`): Mit `@Generable` und `@Guide` Attributen versehen, damit das Foundation Model weiss was es extrahieren soll.
 
-**Fuer Persistenz** (`Receipt`, `LineItem`): SwiftData `@Model` Klassen mit Relationship (cascade delete). Convenience-Initializer konvertiert von `ReceiptData` nach `Receipt`.
+**Für Persistenz** (`Receipt`, `LineItem`): SwiftData `@Model` Klassen mit Relationship (cascade delete). Convenience-Initializer konvertiert von `ReceiptData` nach `Receipt`.
 
 Die Rechnungsbilder werden als JPEG (70% Qualitaet) im `imageData` Property gespeichert.
 
