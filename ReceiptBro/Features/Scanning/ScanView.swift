@@ -2,7 +2,37 @@ import SwiftUI
 import VisionKit
 import OSLog
 
-/// SwiftUI wrapper for VNDocumentCameraViewController
+struct ScanView: View {
+    @Environment(\.dismiss) var dismiss
+
+    @AppStorage("hasSeenTipps") var hasSeenTipps: Bool = false
+
+    let onImageCaptured: (UIImage) -> Void
+
+    var body: some View {
+        DocumentCameraView(
+            onImageCaptured: { image in
+                onImageCaptured(image)
+            },
+            onCancel: {
+                dismiss()
+            }
+        )
+        .interactiveDismissDisabled()
+        .ignoresSafeArea()
+        .if(!hasSeenTipps) { view in
+            view.overlay {
+                ScanTipsView(onLetsGoTapped: {
+                    hasSeenTipps = true
+                    }
+                )
+                .ignoresSafeArea()
+            }
+        }
+    }
+}
+
+/// VNDocumentCameraViewController wrapper
 struct DocumentCameraView: UIViewControllerRepresentable {
     @Environment(\.dismiss) private var dismiss
 
@@ -17,7 +47,6 @@ struct DocumentCameraView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {
-        // No updates needed
     }
 
     func makeCoordinator() -> Coordinator {
@@ -39,7 +68,6 @@ struct DocumentCameraView: UIViewControllerRepresentable {
         ) {
             Logger.scanning.info("Document camera scan completed with \(scan.pageCount) page(s)")
 
-            // Get the first page (receipts are typically single page)
             guard scan.pageCount > 0 else {
                 Logger.scanning.warning("No pages in scan")
                 onCancel()

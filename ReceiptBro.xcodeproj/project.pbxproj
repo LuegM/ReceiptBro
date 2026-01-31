@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5A9C7CB92EA8461C00BEB846 /* Shimmer in Frameworks */ = {isa = PBXBuildFile; productRef = 5A9C7CB82EA8461C00BEB846 /* Shimmer */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		5A6992E12EA7E6FC00357BEF /* ReceiptBro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ReceiptBro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A9C7CB92EA8461C00BEB846 /* Shimmer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = ReceiptBro;
 			packageProductDependencies = (
+				5A9C7CB82EA8461C00BEB846 /* Shimmer */,
 			);
 			productName = ReceiptBro;
 			productReference = 5A6992E12EA7E6FC00357BEF /* ReceiptBro.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 5A6992D82EA7E6FC00357BEF;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5A9C7CB72EA8461C00BEB846 /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5A6992E22EA7E6FC00357BEF /* Products */;
 			projectDirPath = "";
@@ -338,6 +347,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5A9C7CB72EA8461C00BEB846 /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/markiv/SwiftUI-Shimmer.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5A9C7CB82EA8461C00BEB846 /* Shimmer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A9C7CB72EA8461C00BEB846 /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */;
+			productName = Shimmer;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5A6992D92EA7E6FC00357BEF /* Project object */;
 }

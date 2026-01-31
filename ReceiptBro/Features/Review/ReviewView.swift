@@ -1,51 +1,51 @@
 import SwiftUI
 import SwiftData
 import OSLog
+import Shimmer
 
-/// Main review screen where users can see streaming data and edit before saving
 struct ReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     let image: UIImage
-    let extractor: ReceiptExtractor
+    @Bindable var extractor: ReceiptExtractor
 
-    @State private var isEditing = false
     @State private var isSaving = false
     @State private var showingSaveError = false
     @State private var saveError: Error?
+    @State private var validationWarnings: [String] = []
+    @State private var validationFieldIssues: [ReceiptValidator.FieldIssue] = []
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Progress indicator
-                    if extractor.isProcessing {
-                        extractionProgressView
-                    }
-
-                    // Error state
-                    if let error = extractor.error {
+            Group {
+                if let error = extractor.error {
+                    ScrollView {
                         errorView(error)
+                            .padding()
                     }
-
-                    // Streaming receipt display
-                    if let receiptData = extractor.receiptData {
-                        VirtualReceiptView(data: receiptData)
-                            .padding(.horizontal)
-                    }
-
-                    // Thumbnail of original image
-//                    if !extractor.isProcessing {
-//                        originalImageThumbnail
-//                    }
-                    
-                    // OCR text section
-                    if !extractor.isProcessing, let ocrText = extractor.ocrText {
-                        ocrTextSection(ocrText)
+                } else if extractor.receiptData != nil {
+                    ScrollViewReceiptEditorView(
+                        receiptData: $extractor.receiptData.bound,
+                        isStreaming: extractor.isProcessing,
+                        validationIssues: validationFieldIssues,
+                        ocrText: extractor.ocrText,
+                        showProgress: extractor.isProcessing,
+                        progressMessage: progressMessage,
+                        image: image
+                    )
+                    .environment(\.editMode, $editMode)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            if extractor.isProcessing {
+                                extractionProgressView
+                            }
+                        }
+                        .padding()
                     }
                 }
-                .padding(.vertical)
             }
             .navigationTitle("Review Receipt")
             .navigationBarTitleDisplayMode(.inline)
@@ -57,6 +57,13 @@ struct ReviewView: View {
                 }
 
                 ToolbarItem(placement: .primaryAction) {
+                    if !extractor.isProcessing && extractor.receiptData != nil {
+                        EditButton()
+                            .environment(\.editMode, $editMode)
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
                             await saveReceipt()
@@ -73,6 +80,11 @@ struct ReviewView: View {
                     Text(error.localizedDescription)
                 }
             }
+            .onChange(of: extractor.isProcessing) { wasProcessing, isProcessing in
+                if wasProcessing && !isProcessing && extractor.receiptData != nil {
+                    validateExtractedData()
+                }
+            }
         }
     }
 
@@ -80,12 +92,13 @@ struct ReviewView: View {
 
     private var extractionProgressView: some View {
         HStack(spacing: 12) {
-            Image(systemName: "sparkles")
+            Image(systemName: (extractor.progress == .performingOCR ? "text.magnifyingglass" : "sparkles"))
                 .symbolEffect(.variableColor, options: .repeat(.continuous))
 
             Text(progressMessage)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .shimmering(bandSize: 1)
             
             Spacer()
         }
@@ -112,46 +125,6 @@ struct ReviewView: View {
         .padding(.horizontal)
     }
 
-    private func ocrTextSection(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("OCR Text")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-
-            ScrollView {
-                Text(text)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .frame(maxHeight: 200)
-            .padding(.horizontal)
-        }
-    }
-
-//    private var originalImageThumbnail: some View {
-//        VStack(alignment: .leading, spacing: 8) {
-//            Text("Original Image")
-//                .font(.subheadline)
-//                .foregroundStyle(.secondary)
-//
-//            Image(uiImage: image)
-//                .resizable()
-//                .scaledToFit()
-//                .frame(maxHeight: 300)
-//                .clipShape(RoundedRectangle(cornerRadius: 8))
-//                .overlay(
-//                    RoundedRectangle(cornerRadius: 8)
-//                        .stroke(Color(.separator), lineWidth: 1)
-//                )
-//        }
-//        .padding(.horizontal)
-//    }
-
     // MARK: - Computed Properties
 
     private var progressMessage: String {
@@ -161,7 +134,7 @@ struct ReviewView: View {
         case .performingOCR:
             return "Reading text from image..."
         case .extractingStructure:
-            return "Extracting receipt details..."
+            return "Extracting receipt details using onDevice AI..."
         case .complete:
             return "Complete"
         }
@@ -184,21 +157,12 @@ struct ReviewView: View {
         defer { isSaving = false }
 
         do {
-            // Convert image to data for storage
             let imageData = image.jpegData(compressionQuality: 0.7)
-
-            // Create Receipt from finalized data
             let receipt = try Receipt(from: finalizedData, imageData: imageData)
-
-            // Insert into SwiftData context
             modelContext.insert(receipt)
-
-            // Save context
             try modelContext.save()
 
             Logger.storage.info("Receipt saved successfully: \(receipt.merchantName)")
-
-            // Dismiss after successful save
             dismiss()
 
         } catch {
@@ -206,6 +170,59 @@ struct ReviewView: View {
             saveError = error
             showingSaveError = true
         }
+    }
+
+    private func validateExtractedData() {
+        if let receiptData = extractor.receiptData {
+            let result = ReceiptValidator.validate(receiptData)
+            validationWarnings = result.warnings
+            validationFieldIssues = result.fieldIssues
+
+            if let correctedData = result.correctedData {
+                extractor.receiptData = correctedData
+            }
+        }
+    }
+}
+
+struct ValidationWarningsView: View {
+    let warnings: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+
+                Text("Validation Warnings")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+
+            ForEach(warnings, id: \.self) { warning in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("•")
+                        .foregroundStyle(.secondary)
+                    Text(warning)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Tap **Edit** to correct these issues")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+        }
+        .padding()
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+extension ReviewView {
+    func performValidation() {
+        validateExtractedData()
     }
 }
 
